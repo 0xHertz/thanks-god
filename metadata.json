@@ -1,0 +1,9 @@
+{
+  "uuid": "thanks-giving-god@gnome.com",
+  "name": "Thanksgiving-God",
+  "description": "Change panel icon and text color based on light/dark theme.",
+  "version-name": "1",
+  "shell-version": ["46", "47", "48"],
+  "url": "https://thanksgod.com",
+  "settings-schema": "org.gnome.shell.extensions.finallyfind"
+}
