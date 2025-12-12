@@ -12,52 +12,54 @@ export default class DynamicPanelExtension extends Extension {
 
     this._colorSchemeSignal = this._colorSchemeSettings.connect(
       "changed::color-scheme",
-      () => {
-        this._updatePanelColors();
-      },
+      () => this._updatePanelColors(),
     );
 
-    // Connect extension settings changes
     this._settingsSignal = this._settings.connect(
       "changed",
       (settings, key) => {
         if (
-          key === "dark-bg-color" ||
-          key === "light-bg-color" ||
-          key === "dark-fg-color" ||
-          key === "light-fg-color"
+          [
+            "dark-bg-color",
+            "light-bg-color",
+            "dark-fg-color",
+            "light-fg-color",
+          ].includes(key)
         ) {
           this._updatePanelColors();
         }
       },
     );
 
-    // 3. 用户登录时立即执行
+    // 用户登录时执行，但通过 allocation 确保 Actor 初始化完成再修改
     this._updatePanelColors();
 
-    // 4. 监听 Tray 图标变化
+    // 监听 Tray 图标变化
     this._traySignals = [];
-    const setupTraySignals = (area) => {
+    const trayAreas = Object.values(Main.panel.statusArea);
+    for (const area of trayAreas) {
       if (area.container) {
-        // 监听子节点变化，包括图标更新
-        const signalId = area.container.connect("child-notify", () => {
-          this._updatePanelColors();
+        const addSignal = area.container.connect("child-added", (_, child) => {
+          // 【改动】新增：动态添加的 Tray 图标也更新样式
+          this._updateActorStyle(
+            child,
+            `color: ${
+              this._colorSchemeSettings.get_string("color-scheme") ===
+              "prefer-dark"
+                ? this._settings.get_string("dark-fg-color")
+                : this._settings.get_string("light-fg-color")
+            };`,
+          );
         });
-        this._traySignals.push({ area, signalId });
+        const removeSignal = area.container.connect(
+          "child-removed",
+          (_, child) => {
+            this._updateActorStyle(child);
+          },
+        );
+        this._traySignals.push({ area, addSignal, removeSignal });
       }
-    };
-    // 对已有的托盘区域绑定
-    Object.values(Main.panel.statusArea).forEach(setupTraySignals);
-
-    // 监听未来新增的托盘区域（可选）
-    this._panelChildSignal = Main.panel.connect(
-      "child-added",
-      (panel, child) => {
-        if (child.container) {
-          setupTraySignals(child);
-        }
-      },
-    );
+    }
   }
 
   disable() {
@@ -71,28 +73,16 @@ export default class DynamicPanelExtension extends Extension {
     }
 
     if (this._traySignals) {
-      for (const { area, signalId } of this._traySignals) {
-        area.container.disconnect(signalId);
+      for (const { area, addSignal, removeSignal } of this._traySignals) {
+        area.container.disconnect(addSignal);
+        area.container.disconnect(removeSignal);
       }
       this._traySignals = null;
-    }
-    // 断开 panel child-added 信号
-    if (this._panelChildSignal) {
-      Main.panel.disconnect(this._panelChildSignal);
-      this._panelChildSignal = null;
     }
     Main.panel.set_style("");
   }
 
   _updatePanelColors() {
-    const bg_areas = [
-      Main.panel._leftBox,
-      Main.panel._centerBox,
-      Main.panel._rightBox,
-    ];
-    for (const bg_area of bg_areas) {
-      bg_area.set_style("");
-    }
     const isDarkMode =
       this._colorSchemeSettings.get_string("color-scheme") === "prefer-dark";
     const backgroundColor = isDarkMode
@@ -102,13 +92,37 @@ export default class DynamicPanelExtension extends Extension {
       ? this._settings.get_string("dark-fg-color")
       : this._settings.get_string("light-fg-color");
 
-    // Main.panel.set_style(`background-color: ${backgroundColor};`);
-    const _panelButtons = Object.values(Main.panel.statusArea);
-    for (const element of _panelButtons) {
-      Func.updateStyle(element, "color", `${foregroundColor}`);
+    // 更新 panel 背景区域
+    [Main.panel._leftBox, Main.panel._centerBox, Main.panel._rightBox].forEach(
+      (area) => {
+        area.set_style("");
+      },
+    );
+
+    // 更新状态栏按钮
+    Object.values(Main.panel.statusArea).forEach((area) => {
+      this._updateActorStyle(area, `color: ${foregroundColor};`);
+    });
+
+    // 更新 activities dot
+    const activities = Main.panel.statusArea.activities?.first_child;
+    if (activities && activities.get_children) {
+      activities.get_children().forEach((dotWrapper) => {
+        const dot = dotWrapper._dot;
+        if (dot)
+          this._updateActorStyle(dot, `background-color: ${foregroundColor};`);
+      });
     }
-    for (const dot of Main.panel.statusArea.activities.first_child.get_children()) {
-      Func.updateStyle(dot._dot, "background-color", `${foregroundColor}`);
+  }
+
+  // 核心方法：安全修改 Actor 样式
+  _updateActorStyle(actor, style = "") {
+    if (!actor) return;
+
+    if (actor.get_allocation_box && actor.get_allocation_box()) {
+      actor.set_style(style);
+    } else {
+      actor.connect_once("notify::allocation", () => actor.set_style(style));
     }
   }
 }
