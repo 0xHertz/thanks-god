@@ -32,13 +32,54 @@ export default class DynamicPanelExtension extends Extension {
       },
     );
 
+    // 3. 用户登录时立即执行
     this._updatePanelColors();
+
+    // 4. 监听 Tray 图标变化
+    this._traySignals = [];
+    const trayAreas = Object.values(Main.panel.statusArea);
+    for (const area of trayAreas) {
+      if (area.container) {
+        const signalId = area.container.connect("child-notify", () => {
+          this._updatePanelColors();
+        });
+        this._traySignals.push({ area, signalId });
+      }
+    }
+    // 对已有的托盘区域绑定
+    Object.values(Main.panel.statusArea).forEach(setupTraySignals);
+
+    // 监听未来新增的托盘区域（可选）
+    this._panelChildSignal = Main.panel.connect(
+      "child-added",
+      (panel, child) => {
+        if (child.container) {
+          setupTraySignals(child);
+        }
+      },
+    );
   }
 
   disable() {
     if (this._colorSchemeSignal) {
       this._colorSchemeSettings.disconnect(this._colorSchemeSignal);
       this._colorSchemeSignal = null;
+    }
+    if (this._settingsSignal) {
+      this._settings.disconnect(this._settingsSignal);
+      this._settingsSignal = null;
+    }
+
+    if (this._traySignals) {
+      for (const { area, signalId } of this._traySignals) {
+        area.container.disconnect(signalId);
+      }
+      this._traySignals = null;
+    }
+    // 断开 panel child-added 信号
+    if (this._panelChildSignal) {
+      Main.panel.disconnect(this._panelChildSignal);
+      this._panelChildSignal = null;
     }
     Main.panel.set_style("");
   }
