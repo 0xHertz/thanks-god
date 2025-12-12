@@ -37,15 +37,15 @@ export default class DynamicPanelExtension extends Extension {
 
     // 4. 监听 Tray 图标变化
     this._traySignals = [];
-    const trayAreas = Object.values(Main.panel.statusArea);
-    for (const area of trayAreas) {
+    const setupTraySignals = (area) => {
       if (area.container) {
+        // 监听子节点变化，包括图标更新
         const signalId = area.container.connect("child-notify", () => {
           this._updatePanelColors();
         });
         this._traySignals.push({ area, signalId });
       }
-    }
+    };
     // 对已有的托盘区域绑定
     Object.values(Main.panel.statusArea).forEach(setupTraySignals);
 
