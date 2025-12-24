@@ -60,6 +60,25 @@ export default class DynamicPanelExtension extends Extension {
         this._traySignals.push({ area, addSignal, removeSignal });
       }
     }
+
+    this._leftBoxSignal = Main.panel._leftBox.connect(
+      "child-added",
+      (_, actor) => {
+        this._updatePanelColors();
+      },
+    );
+    this._centerBoxSignal = Main.panel._centerBox.connect(
+      "child-added",
+      (_, actor) => {
+        this._updatePanelColors();
+      },
+    );
+    this._rightBoxSignal = Main.panel._rightBox.connect(
+      "child-added",
+      (_, actor) => {
+        this._updatePanelColors();
+      },
+    );
   }
 
   disable() {
@@ -80,6 +99,19 @@ export default class DynamicPanelExtension extends Extension {
       this._traySignals = null;
     }
     Main.panel.set_style("");
+
+    if (this._leftBoxSignal) {
+      Main.panel._leftBox.disconnect(this._leftBoxSignal);
+      this._leftBoxSignal = null;
+    }
+    if (this._centerBoxSignal) {
+      Main.panel._centerBox.disconnect(this._centerBoxSignal);
+      this._centerBoxSignal = null;
+    }
+    if (this._rightBoxSignal) {
+      Main.panel._rightBox.disconnect(this._rightBoxSignal);
+      this._rightBoxSignal = null;
+    }
   }
 
   _updatePanelColors() {
