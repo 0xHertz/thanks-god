@@ -1,4 +1,5 @@
 import Gio from "gi://Gio";
+import GLib from "gi://GLib";
 import Func from "./lib/func.js";
 import { Extension } from "resource:///org/gnome/shell/extensions/extension.js";
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
@@ -30,37 +31,6 @@ export default class DynamicPanelExtension extends Extension {
         }
       },
     );
-
-    // 用户登录时执行，但通过 allocation 确保 Actor 初始化完成再修改
-    this._updatePanelColors();
-
-    // 监听 Tray 图标变化
-    this._traySignals = [];
-    const trayAreas = Object.values(Main.panel.statusArea);
-    for (const area of trayAreas) {
-      if (area.container) {
-        const addSignal = area.container.connect("child-added", (_, child) => {
-          // 【改动】新增：动态添加的 Tray 图标也更新样式
-          this._updateActorStyle(
-            child,
-            `color: ${
-              this._colorSchemeSettings.get_string("color-scheme") ===
-              "prefer-dark"
-                ? this._settings.get_string("dark-fg-color")
-                : this._settings.get_string("light-fg-color")
-            };`,
-          );
-        });
-        const removeSignal = area.container.connect(
-          "child-removed",
-          (_, child) => {
-            this._updateActorStyle(child);
-          },
-        );
-        this._traySignals.push({ area, addSignal, removeSignal });
-      }
-    }
-
     this._leftBoxSignal = Main.panel._leftBox.connect(
       "child-added",
       (_, actor) => {
@@ -79,6 +49,12 @@ export default class DynamicPanelExtension extends Extension {
         this._updatePanelColors();
       },
     );
+    // 用户登录时执行，但通过 allocation 确保 Actor 初始化完成再修改
+    GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+      if (this._destroyed) return GLib.SOURCE_REMOVE;
+      this._updatePanelColors();
+      return GLib.SOURCE_REMOVE;
+    });
   }
 
   disable() {
@@ -89,14 +65,6 @@ export default class DynamicPanelExtension extends Extension {
     if (this._settingsSignal) {
       this._settings.disconnect(this._settingsSignal);
       this._settingsSignal = null;
-    }
-
-    if (this._traySignals) {
-      for (const { area, addSignal, removeSignal } of this._traySignals) {
-        area.container.disconnect(addSignal);
-        area.container.disconnect(removeSignal);
-      }
-      this._traySignals = null;
     }
     Main.panel.set_style("");
 
@@ -131,30 +99,12 @@ export default class DynamicPanelExtension extends Extension {
       },
     );
 
-    // 更新状态栏按钮
-    Object.values(Main.panel.statusArea).forEach((area) => {
-      this._updateActorStyle(area, `color: ${foregroundColor};`);
-    });
-
-    // 更新 activities dot
-    const activities = Main.panel.statusArea.activities?.first_child;
-    if (activities && activities.get_children) {
-      activities.get_children().forEach((dotWrapper) => {
-        const dot = dotWrapper._dot;
-        if (dot)
-          this._updateActorStyle(dot, `background-color: ${foregroundColor};`);
-      });
+    const _panelButtons = Object.values(Main.panel.statusArea);
+    for (const element of _panelButtons) {
+      Func.updateStyle(element, "color", `${foregroundColor}`);
     }
-  }
-
-  // 核心方法：安全修改 Actor 样式
-  _updateActorStyle(actor, style = "") {
-    if (!actor) return;
-
-    if (actor.get_allocation_box && actor.get_allocation_box()) {
-      actor.set_style(style);
-    } else {
-      actor.connect_once("notify::allocation", () => actor.set_style(style));
+    for (const dot of Main.panel.statusArea.activities.first_child.get_children()) {
+      Func.updateStyle(dot._dot, "background-color", `${foregroundColor}`);
     }
   }
 }
