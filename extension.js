@@ -14,6 +14,9 @@ export default class DynamicPanelExtension extends Extension {
     this._colorSchemeSettings = new Gio.Settings({
       schema: "org.gnome.desktop.interface",
     });
+    this._backgroundSettings = new Gio.Settings({
+      schema: "org.gnome.desktop.background",
+    });
     this._enableTheme = this._settings.get_boolean("enable-theme");
 
     this._colorSchemeSignal = this._colorSchemeSettings.connect(
@@ -22,7 +25,15 @@ export default class DynamicPanelExtension extends Extension {
         this._schedulePanelRefresh(250);
       },
     );
+    this._backgroundSignals = [
+      this._backgroundSettings.connect("changed::picture-uri", () => {
+        this._schedulePanelRefresh(500);
+      }),
 
+      this._backgroundSettings.connect("changed::picture-uri-dark", () => {
+        this._schedulePanelRefresh(500);
+      }),
+    ];
     this._settingsSignal = this._settings.connect(
       "changed",
       (settings, key) => {
@@ -110,6 +121,15 @@ export default class DynamicPanelExtension extends Extension {
         Main.overview.disconnect(signalId);
       });
       this._overviewSignals = null;
+    }
+    if (this._backgroundSignals) {
+      this._backgroundSignals.forEach((id) => {
+        try {
+          this._backgroundSettings.disconnect(id);
+        } catch (_) {}
+      });
+
+      this._backgroundSignals = null;
     }
     if (this._panelSignals) {
       const panelBox = Main.layoutManager.panelBox;
