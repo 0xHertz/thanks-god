@@ -71,11 +71,26 @@ export default class extends ExtensionPreferences {
     gColors.add(rowDColors);
     gColors.add(rowLColors);
 
+    const gEnableTheme = new Adw.PreferencesGroup({
+      title: _("Enable ThemeMod"),
+    });
+    const enableThemeSwitch = new Adw.SwitchRow({
+      title: _("Enable ThemeMod"),
+    });
+    settings.bind(
+      "enable-theme",
+      enableThemeSwitch,
+      "active",
+      Gio.SettingsBindFlags.DEFAULT,
+    );
+    gEnableTheme.add(enableThemeSwitch);
+
     const pageColors = new Adw.PreferencesPage({
       name: "colors",
       title: _("Custom Colors"),
       iconName: `dp-panel-generic-symbolic`,
     });
+    pageColors.add(gEnableTheme);
     pageColors.add(gColors);
 
     window.set_search_enabled(false);

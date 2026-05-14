@@ -24,5 +24,10 @@
 			<summary>Custom light mode foreground color</summary>
 			<description />
 		</key>
+		<key name="enable-theme" type="b">
+            <default>false</default>
+            <summary>Enable theme</summary>
+            <description>Enable theme based change</description>
+        </key>
 	</schema>
 </schemalist>

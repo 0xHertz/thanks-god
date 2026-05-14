@@ -14,6 +14,7 @@ export default class DynamicPanelExtension extends Extension {
     this._colorSchemeSettings = new Gio.Settings({
       schema: "org.gnome.desktop.interface",
     });
+    this._enableTheme = this._settings.get_boolean("enable-theme");
 
     this._colorSchemeSignal = this._colorSchemeSettings.connect(
       "changed::color-scheme",
@@ -31,6 +32,7 @@ export default class DynamicPanelExtension extends Extension {
             "light-bg-color",
             "dark-fg-color",
             "light-fg-color",
+            "enable-theme",
           ].includes(key)
         ) {
           this._schedulePanelRefresh(250);
@@ -67,6 +69,7 @@ export default class DynamicPanelExtension extends Extension {
 
     this._updatingPanelColors = false;
     this._panelRefreshTimeoutId = null;
+    this._foregroundColor = null;
 
     // 用户登录时执行，但通过 allocation 确保 Actor 初始化完成再修改
     this._schedulePanelRefresh(250);
@@ -122,6 +125,9 @@ export default class DynamicPanelExtension extends Extension {
     if (this._updatingPanelColors) {
       this._updatingPanelColors = false;
     }
+    if (this._foregroundColor) {
+      this._foregroundColor = null;
+    }
   }
 
   _schedulePanelRefresh(delay = 180) {
@@ -146,8 +152,10 @@ export default class DynamicPanelExtension extends Extension {
   }
 
   async _updatePanelColors() {
+    this._enableTheme = this._settings.get_boolean("enable-theme");
     if (this._updatingPanelColors) return;
     this._updatingPanelColors = true;
+
     try {
       // 1. 获取 panel 区域 actor
       const panelActors = [
@@ -155,24 +163,25 @@ export default class DynamicPanelExtension extends Extension {
         Main.panel._centerBox,
         Main.panel._rightBox,
       ];
-      // 2. 采样亮度并决定颜色
-      const luminance = await this._contrastSampler.sampleTopBarLuminance(
-        AdaptiveContrastConfig,
-      );
 
-      const foregroundColor = this._contrastSampler.decideTextColor(
-        luminance,
-        AdaptiveContrastConfig,
-      );
+      if (!this._enableTheme) {
+        // 2. 采样亮度并决定颜色
+        const luminance = await this._contrastSampler.sampleTopBarLuminance(
+          AdaptiveContrastConfig,
+        );
 
-      // const isDarkMode =
-      //   this._colorSchemeSettings.get_string("color-scheme") === "prefer-dark";
-      // const backgroundColor = isDarkMode
-      //   ? this._settings.get_string("dark-bg-color")
-      //   : this._settings.get_string("light-bg-color");
-      // const foregroundColor = isDarkMode
-      //   ? this._settings.get_string("dark-fg-color")
-      //   : this._settings.get_string("light-fg-color");
+        this._foregroundColor = this._contrastSampler.decideTextColor(
+          luminance,
+          AdaptiveContrastConfig,
+        );
+      } else {
+        const isDarkMode =
+          this._colorSchemeSettings.get_string("color-scheme") ===
+          "prefer-dark";
+        this._foregroundColor = isDarkMode
+          ? this._settings.get_string("dark-fg-color")
+          : this._settings.get_string("light-fg-color");
+      }
 
       // 更新 panel 背景区域
       panelActors.forEach((area) => {
@@ -181,10 +190,14 @@ export default class DynamicPanelExtension extends Extension {
 
       const _panelButtons = Object.values(Main.panel.statusArea);
       for (const element of _panelButtons) {
-        Func.updateStyle(element, "color", `${foregroundColor}`);
+        Func.updateStyle(element, "color", `${this._foregroundColor}`);
       }
       for (const dot of Main.panel.statusArea.activities.first_child.get_children()) {
-        Func.updateStyle(dot._dot, "background-color", `${foregroundColor}`);
+        Func.updateStyle(
+          dot._dot,
+          "background-color",
+          `${this._foregroundColor}`,
+        );
       }
     } finally {
       this._updatingPanelColors = false;
