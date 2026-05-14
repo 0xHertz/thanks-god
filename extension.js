@@ -18,9 +18,7 @@ export default class DynamicPanelExtension extends Extension {
     this._colorSchemeSignal = this._colorSchemeSettings.connect(
       "changed::color-scheme",
       () => {
-        this._updatePanelColors().catch((e) => {
-          console.error(e);
-        });
+        this._schedulePanelRefresh(250);
       },
     );
 
@@ -35,82 +33,50 @@ export default class DynamicPanelExtension extends Extension {
             "light-fg-color",
           ].includes(key)
         ) {
-          this._updatePanelColors().catch((e) => {
-            console.error(e);
-          });
+          this._schedulePanelRefresh(250);
         }
       },
     );
     this._leftBoxSignal = Main.panel._leftBox.connect("child-added", () => {
-      this._updatePanelColors().catch((e) => {
-        console.error(e);
-      });
+      this._schedulePanelRefresh(250);
     });
     this._centerBoxSignal = Main.panel._centerBox.connect("child-added", () => {
-      this._updatePanelColors().catch((e) => {
-        console.error(e);
-      });
+      this._schedulePanelRefresh(250);
     });
     this._rightBoxSignal = Main.panel._rightBox.connect("child-added", () => {
-      this._updatePanelColors().catch((e) => {
-        console.error(e);
-      });
+      this._schedulePanelRefresh(250);
     });
     this._contrastSampler = new StageContrastSampler();
     this._panelSignals = [];
     const panelBox = Main.layoutManager.panelBox;
     this._panelSignals.push(
       panelBox.connect("notify::visible", () => {
-        this._updatePanelColors().catch((e) => {
-          console.error(e);
-        });
-      }),
-      panelBox.connect("notify::height", () => {
-        this._updatePanelColors().catch((e) => {
-          console.error(e);
-        });
-      }),
-      panelBox.connect("notify::opacity", () => {
-        this._updatePanelColors().catch((e) => {
-          console.error(e);
-        });
-      }),
-      panelBox.connect("notify::allocation", () => {
-        this._updatePanelColors().catch((e) => {
-          console.error(e);
-        });
+        this._schedulePanelRefresh(250);
       }),
     );
     const overview = Main.overview;
     this._overviewSignals = [];
     this._overviewSignals = [
-      overview.connect("showing", () => {
-        this._updatePanelColors().catch(console.error);
-      }),
-      overview.connect("hiding", () => {
-        this._updatePanelColors().catch(console.error);
-      }),
       overview.connect("shown", () => {
-        this._updatePanelColors().catch(console.error);
+        this._schedulePanelRefresh(250);
       }),
       overview.connect("hidden", () => {
-        this._updatePanelColors().catch(console.error);
+        this._schedulePanelRefresh(250);
       }),
     ];
 
     this._updatingPanelColors = false;
+    this._panelRefreshTimeoutId = null;
 
     // 用户登录时执行，但通过 allocation 确保 Actor 初始化完成再修改
-    GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
-      if (this._destroyed) return GLib.SOURCE_REMOVE;
-      this._updatePanelColors().catch((e) => {
-        console.error(e);
-      });
-      return GLib.SOURCE_REMOVE;
-    });
+    this._schedulePanelRefresh(250);
   }
 
   disable() {
+    if (this._panelRefreshTimeoutId) {
+      GLib.source_remove(this._panelRefreshTimeoutId);
+      this._panelRefreshTimeoutId = null;
+    }
     if (this._colorSchemeSignal) {
       this._colorSchemeSettings.disconnect(this._colorSchemeSignal);
       this._colorSchemeSignal = null;
@@ -156,6 +122,27 @@ export default class DynamicPanelExtension extends Extension {
     if (this._updatingPanelColors) {
       this._updatingPanelColors = false;
     }
+  }
+
+  _schedulePanelRefresh(delay = 180) {
+    if (this._panelRefreshTimeoutId) {
+      GLib.source_remove(this._panelRefreshTimeoutId);
+      this._panelRefreshTimeoutId = null;
+    }
+
+    this._panelRefreshTimeoutId = GLib.timeout_add(
+      GLib.PRIORITY_DEFAULT,
+      delay,
+      () => {
+        this._panelRefreshTimeoutId = null;
+
+        this._updatePanelColors().catch((e) => {
+          console.error(e);
+        });
+
+        return GLib.SOURCE_REMOVE;
+      },
+    );
   }
 
   async _updatePanelColors() {
